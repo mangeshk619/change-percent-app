@@ -11,17 +11,18 @@ st.write("Upload XLIFF (.xlf/.xliff) or MXLFF (.mxliff) files.")
 file1 = st.file_uploader("Upload Original File", type=["xlf", "xliff", "mxliff"])
 file2 = st.file_uploader("Upload Edited File", type=["xlf", "xliff", "mxliff"])
 
-def read_xliff(file):
-    if file.name.endswith(".mxliff"):
-        # Open the zip and find first .xlf/.xliff inside
-        z = zipfile.ZipFile(file)
+def read_xliff(uploaded_file):
+    if uploaded_file.name.endswith(".mxliff"):
+        text_segments = []
+        z = zipfile.ZipFile(BytesIO(uploaded_file.read()))
+        # Process all XLF/XLIFF files inside the MXLFF
         for name in z.namelist():
             if name.endswith((".xlf", ".xliff")):
                 with z.open(name) as f:
-                    return read_xlf_content(f)
-        return ""
+                    text_segments.append(read_xlf_content(f))
+        return "\n".join(text_segments)
     else:
-        return read_xlf_content(file)
+        return read_xlf_content(uploaded_file)
 
 def read_xlf_content(f):
     tree = ET.parse(f)
