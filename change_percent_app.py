@@ -1,28 +1,39 @@
 import streamlit as st
 import Levenshtein
 import xml.etree.ElementTree as ET
+import zipfile
+from io import BytesIO
 
 st.title("Change % Calculator (Levenshtein Distance)")
 
-st.write("Upload two XLIFF files: the original MT output and the post-edited version.")
+st.write("Upload XLIFF (.xlf/.xliff) or MXLFF (.mxliff) files.")
 
-file1 = st.file_uploader("Upload Original XLIFF", type=["xlf", "xliff"])
-file2 = st.file_uploader("Upload Edited XLIFF", type=["xlf", "xliff"])
+file1 = st.file_uploader("Upload Original File", type=["xlf", "xliff", "mxliff"])
+file2 = st.file_uploader("Upload Edited File", type=["xlf", "xliff", "mxliff"])
 
-def read_xliff(uploaded_file):
-    tree = ET.parse(uploaded_file)
+def read_xliff(file):
+    if file.name.endswith(".mxliff"):
+        # Open the zip and find first .xlf/.xliff inside
+        z = zipfile.ZipFile(file)
+        for name in z.namelist():
+            if name.endswith((".xlf", ".xliff")):
+                with z.open(name) as f:
+                    return read_xlf_content(f)
+        return ""
+    else:
+        return read_xlf_content(file)
+
+def read_xlf_content(f):
+    tree = ET.parse(f)
     root = tree.getroot()
-
-    # XLIFF namespaces (v1.2 and v2.0 supported)
     ns = {"xliff": "urn:oasis:names:tc:xliff:document:1.2"}
     text_segments = []
 
-    # Try common patterns (depends on XLIFF version/structure)
+    # Extract source + target text
     for elem in root.findall(".//xliff:source", ns):
         text_segments.append(elem.text or "")
     for elem in root.findall(".//xliff:target", ns):
         text_segments.append(elem.text or "")
-
     return "\n".join(text_segments)
 
 if file1 and file2:
@@ -37,5 +48,5 @@ if file1 and file2:
     st.write(f"Change %: **{change_percent:.2f}%**")
 
     with st.expander("Show Extracted Texts"):
-        st.text_area("Original XLIFF Text", text1, height=200)
-        st.text_area("Edited XLIFF Text", text2, height=200)
+        st.text_area("Original Text", text1, height=200)
+        st.text_area("Edited Text", text2, height=200)
