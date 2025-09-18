@@ -11,17 +11,22 @@ st.write("Upload XLIFF (.xlf/.xliff) or MXLFF (.mxliff) files.")
 file1 = st.file_uploader("Upload Original File", type=["xlf", "xliff", "mxliff"])
 file2 = st.file_uploader("Upload Edited File", type=["xlf", "xliff", "mxliff"])
 
+def is_zip(file):
+    start = file.read(4)
+    file.seek(0)
+    return start == b'PK\x03\x04'
+
 def read_xliff(uploaded_file):
-    if uploaded_file.name.endswith(".mxliff"):
+    if uploaded_file.name.endswith(".mxliff") and is_zip(uploaded_file):
         text_segments = []
         z = zipfile.ZipFile(BytesIO(uploaded_file.read()))
-        # Process all XLF/XLIFF files inside the MXLFF
         for name in z.namelist():
             if name.endswith((".xlf", ".xliff")):
                 with z.open(name) as f:
                     text_segments.append(read_xlf_content(f))
         return "\n".join(text_segments)
     else:
+        uploaded_file.seek(0)  # reset pointer
         return read_xlf_content(uploaded_file)
 
 def read_xlf_content(f):
@@ -29,11 +34,7 @@ def read_xlf_content(f):
     root = tree.getroot()
     ns = {"xliff": "urn:oasis:names:tc:xliff:document:1.2"}
     text_segments = []
-
-    # Extract source + target text
-    for elem in root.findall(".//xliff:source", ns):
-        text_segments.append(elem.text or "")
-    for elem in root.findall(".//xliff:target", ns):
+    for elem in root.findall(".//xliff:target", ns):  # target only
         text_segments.append(elem.text or "")
     return "\n".join(text_segments)
 
