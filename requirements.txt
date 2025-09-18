@@ -1,2 +1,5 @@
 streamlit
 python-Levenshtein
+python-docx
+pandas
+openpyxl
