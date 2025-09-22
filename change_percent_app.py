@@ -3,37 +3,36 @@ import zipfile
 from io import BytesIO
 import xml.etree.ElementTree as ET
 import difflib
+import pandas as pd
 
-st.title("📊 MT vs PE Change % Calculator (Updated)")
+st.title("📊 MT vs PE Change % Calculator (Segment Validation with Highlights)")
 
-def read_xliff_text(file_bytes):
-    """Extract all target text from XLIFF (handles zip, plain XML, and namespaces)"""
-    text = ""
+def read_xliff_text(file_bytes, tag="target"):
+    """Extract all <source> or <target> text from XLIFF (handles zip, plain XML, namespaces)."""
+    text = []
     if not file_bytes:
         return text
     try:
         # Try as zip
         with zipfile.ZipFile(BytesIO(file_bytes)) as z:
             for name in z.namelist():
-                if name.endswith(".xlf") or name.endswith(".xliff"):
+                if name.endswith((".xlf", ".xliff", ".mxliff")):
                     with z.open(name) as f:
                         tree = ET.parse(f)
                         root = tree.getroot()
-                        # Extract all <target> text
-                        for t in root.findall(".//{*}target"):
+                        for t in root.findall(f".//{{*}}{tag}"):
                             if t.text:
-                                text += t.text + " "
+                                text.append(t.text.strip())
     except zipfile.BadZipFile:
         # Not a zip, treat as plain XML
         try:
             root = ET.fromstring(file_bytes)
-            for t in root.findall(".//{*}target"):
+            for t in root.findall(f".//{{*}}{tag}"):
                 if t.text:
-                    text += t.text + " "
+                    text.append(t.text.strip())
         except ET.ParseError:
-            # Fallback: decode all text
-            text = file_bytes.decode("utf-8", errors="ignore")
-    return text.strip()
+            pass
+    return text
 
 def levenshtein_ratio(s1, s2):
     """Compute similarity ratio"""
@@ -49,21 +48,45 @@ if st.button("Compute Change %"):
         st.error("Please upload both MT and PE XLIFF files.")
     else:
         try:
-            # Read uploaded files as bytes
             mt_bytes = mt_file.read()
             pe_bytes = pe_file.read()
 
-            mt_text = read_xliff_text(mt_bytes)
-            pe_text = read_xliff_text(pe_bytes)
+            # Extract source segments
+            mt_sources = read_xliff_text(mt_bytes, tag="source")
+            pe_sources = read_xliff_text(pe_bytes, tag="source")
 
-            # Debug info
-            st.write("MT text length:", len(mt_text))
-            st.write("PE text length:", len(pe_text))
+            # Build comparison table
+            max_len = max(len(mt_sources), len(pe_sources))
+            rows = []
+            for i in range(max_len):
+                mt_seg = mt_sources[i] if i < len(mt_sources) else ""
+                pe_seg = pe_sources[i] if i < len(pe_sources) else ""
+                match = mt_seg == pe_seg
+                rows.append({"Segment #": i+1, "MT Source": mt_seg, "PE Source": pe_seg, "Match": match})
 
-            if not mt_text or not pe_text:
-                st.warning("One of the files has no target text. Check the file contents.")
+            df = pd.DataFrame(rows)
+
+            # Style mismatches in red
+            def highlight_mismatch(row):
+                return ['color: red' if not row.Match else '' for _ in row]
+
+            st.subheader("Source Segment Comparison")
+            st.dataframe(df.style.apply(highlight_mismatch, axis=1), use_container_width=True)
+
+            # Strict validation: stop if any mismatch
+            if not df['Match'].all():
+                st.error("❌ MT and PE files have mismatched source segments. Calculation stopped.")
             else:
-                change_percent = 100 - levenshtein_ratio(mt_text, pe_text)
-                st.success(f"✅ Change % between MT and PE: {change_percent:.2f}%")
+                mt_text = " ".join(read_xliff_text(mt_bytes, tag="target"))
+                pe_text = " ".join(read_xliff_text(pe_bytes, tag="target"))
+
+                st.write("MT target text length:", len(mt_text))
+                st.write("PE target text length:", len(pe_text))
+
+                if not mt_text or not pe_text:
+                    st.warning("One of the files has no target text. Check the file contents.")
+                else:
+                    change_percent = 100 - levenshtein_ratio(mt_text, pe_text)
+                    st.success(f"✅ Change % between MT and PE: {change_percent:.2f}%")
         except Exception as ex:
             st.error(f"⚠️ Error: {ex}")
