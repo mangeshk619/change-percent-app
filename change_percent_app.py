@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 import difflib
 import pandas as pd
 
-st.title("📊 MT vs PE Change % Calculator (Stable Cloud Version)")
+st.title("📊 MT vs PE Change % Calculator (Mismatch Target View)")
 
 def read_xliff_text(file_bytes, tag="target"):
     """Extract all <source> or <target> text from XLIFF (handles zip, plain XML, namespaces)."""
@@ -48,43 +48,43 @@ if st.button("Compute Change %"):
             mt_bytes = mt_file.read()
             pe_bytes = pe_file.read()
 
-            # Extract source segments
+            # Extract source segments for validation
             mt_sources = read_xliff_text(mt_bytes, tag="source")
             pe_sources = read_xliff_text(pe_bytes, tag="source")
 
-            # Build comparison table using emojis
-            max_len = max(len(mt_sources), len(pe_sources))
-            rows = []
-            for i in range(max_len):
-                mt_seg = mt_sources[i] if i < len(mt_sources) else ""
-                pe_seg = pe_sources[i] if i < len(pe_sources) else ""
-                match = "✔️" if mt_seg == pe_seg else "❌"
-                rows.append({
-                    "Segment #": i+1,
-                    "MT Source": mt_seg,
-                    "PE Source": pe_seg,
-                    "Match": match
-                })
-
-            df = pd.DataFrame(rows)
-
-            st.subheader("Source Segment Comparison (✔️ = match, ❌ = mismatch)")
-            st.table(df)  # stable static table for Streamlit Cloud
-
-            # Strict validation: stop if any mismatch
-            if any(df["Match"] == "❌"):
+            # Strict validation: stop if any mismatch in source
+            if mt_sources != pe_sources:
                 st.error("❌ MT and PE files have mismatched source segments. Calculation stopped.")
             else:
-                mt_text = " ".join(read_xliff_text(mt_bytes, tag="target"))
-                pe_text = " ".join(read_xliff_text(pe_bytes, tag="target"))
+                # Extract target segments
+                mt_targets = read_xliff_text(mt_bytes, tag="target")
+                pe_targets = read_xliff_text(pe_bytes, tag="target")
 
-                st.write("MT target text length:", len(mt_text))
-                st.write("PE target text length:", len(pe_text))
+                # Build mismatch table
+                max_len = max(len(mt_targets), len(pe_targets))
+                rows = []
+                for i in range(max_len):
+                    mt_t = mt_targets[i] if i < len(mt_targets) else ""
+                    pe_t = pe_targets[i] if i < len(pe_targets) else ""
+                    if mt_t != pe_t:
+                        rows.append({
+                            "Segment #": i+1,
+                            "MT Target": mt_t,
+                            "PE Target": pe_t
+                        })
 
-                if not mt_text or not pe_text:
-                    st.warning("One of the files has no target text. Check the file contents.")
+                if rows:
+                    df_mismatch = pd.DataFrame(rows)
+                    st.subheader("⚠️ Mismatched Target Segments")
+                    st.table(df_mismatch)  # only mismatches shown
                 else:
-                    change_percent = 100 - levenshtein_ratio(mt_text, pe_text)
-                    st.success(f"✅ Change % between MT and PE: {change_percent:.2f}%")
+                    st.success("✅ No mismatched target segments found.")
+
+                # Compute overall change %
+                mt_text = " ".join(mt_targets)
+                pe_text = " ".join(pe_targets)
+                change_percent = 100 - levenshtein_ratio(mt_text, pe_text)
+                st.success(f"✅ Change % between MT and PE: {change_percent:.2f}%")
+
         except Exception as ex:
             st.error(f"⚠️ Error: {ex}")
