@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 import difflib
 import pandas as pd
 
-st.title("📊 MT vs PE Change % Calculator (Segment Validation with Highlights)")
+st.title("📊 MT vs PE Change % Calculator (Stable Cloud Version)")
 
 def read_xliff_text(file_bytes, tag="target"):
     """Extract all <source> or <target> text from XLIFF (handles zip, plain XML, namespaces)."""
@@ -13,7 +13,6 @@ def read_xliff_text(file_bytes, tag="target"):
     if not file_bytes:
         return text
     try:
-        # Try as zip
         with zipfile.ZipFile(BytesIO(file_bytes)) as z:
             for name in z.namelist():
                 if name.endswith((".xlf", ".xliff", ".mxliff")):
@@ -24,7 +23,6 @@ def read_xliff_text(file_bytes, tag="target"):
                             if t.text:
                                 text.append(t.text.strip())
     except zipfile.BadZipFile:
-        # Not a zip, treat as plain XML
         try:
             root = ET.fromstring(file_bytes)
             for t in root.findall(f".//{{*}}{tag}"):
@@ -35,7 +33,6 @@ def read_xliff_text(file_bytes, tag="target"):
     return text
 
 def levenshtein_ratio(s1, s2):
-    """Compute similarity ratio"""
     return difflib.SequenceMatcher(None, s1, s2).ratio() * 100
 
 st.markdown("Upload the **MT XLIFF** and **PE XLIFF** files to calculate change %:")
@@ -55,26 +52,27 @@ if st.button("Compute Change %"):
             mt_sources = read_xliff_text(mt_bytes, tag="source")
             pe_sources = read_xliff_text(pe_bytes, tag="source")
 
-            # Build comparison table
+            # Build comparison table using emojis
             max_len = max(len(mt_sources), len(pe_sources))
             rows = []
             for i in range(max_len):
                 mt_seg = mt_sources[i] if i < len(mt_sources) else ""
                 pe_seg = pe_sources[i] if i < len(pe_sources) else ""
-                match = mt_seg == pe_seg
-                rows.append({"Segment #": i+1, "MT Source": mt_seg, "PE Source": pe_seg, "Match": match})
+                match = "✔️" if mt_seg == pe_seg else "❌"
+                rows.append({
+                    "Segment #": i+1,
+                    "MT Source": mt_seg,
+                    "PE Source": pe_seg,
+                    "Match": match
+                })
 
             df = pd.DataFrame(rows)
 
-            # Style mismatches in red
-            def highlight_mismatch(row):
-                return ['color: red' if not row.Match else '' for _ in row]
-
-            st.subheader("Source Segment Comparison")
-            st.dataframe(df.style.apply(highlight_mismatch, axis=1), use_container_width=True)
+            st.subheader("Source Segment Comparison (✔️ = match, ❌ = mismatch)")
+            st.table(df)  # stable static table for Streamlit Cloud
 
             # Strict validation: stop if any mismatch
-            if not df['Match'].all():
+            if any(df["Match"] == "❌"):
                 st.error("❌ MT and PE files have mismatched source segments. Calculation stopped.")
             else:
                 mt_text = " ".join(read_xliff_text(mt_bytes, tag="target"))
