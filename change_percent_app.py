@@ -69,13 +69,13 @@ if st.button("Compute Change %"):
                 else:
                     change_percent = 100 - levenshtein_ratio(mt_text, pe_text)
 
-                    # Colored badge display
+                    # Colored badges for Change %
                     if change_percent < 20:
-                        st.success(f"✅ Change %: {change_percent:.2f}% – Minimal editing needed")
+                        st.error(f"🔴 Change %: {change_percent:.2f}% – Minimal editing")
                     elif change_percent < 50:
-                        st.warning(f"⚠️ Change %: {change_percent:.2f}% – Moderate editing required")
+                        st.warning(f"🟡 Change %: {change_percent:.2f}% – Moderate editing")
                     else:
-                        st.error(f"❌ Change %: {change_percent:.2f}% – Heavy post-editing required")
+                        st.success(f"🟢 Change %: {change_percent:.2f}% – Heavy post-editing")
 
                     # Summary Metrics
                     col1, col2, col3, col4 = st.columns(4)
