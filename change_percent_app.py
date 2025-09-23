@@ -134,7 +134,9 @@ if st.button("Compute Change %"):
                     }
                     df = pd.DataFrame(report_data)
 
+                    # -----------------------------
                     # Export Excel (fallback to CSV if openpyxl missing)
+                    # -----------------------------
                     try:
                         output = BytesIO()
                         with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -167,6 +169,9 @@ if st.button("Compute Change %"):
                         "Category": category,
                         "Timestamp": timestamp
                     })
+
+        except Exception as ex:
+            st.error(f"⚠️ Error: {ex}")
 
 # -----------------------------
 # Display upload & analysis history
