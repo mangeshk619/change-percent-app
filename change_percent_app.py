@@ -4,10 +4,23 @@ from io import BytesIO
 import xml.etree.ElementTree as ET
 import difflib
 import pandas as pd
+from datetime import datetime
 
+# -----------------------------
+# Page configuration
+# -----------------------------
 st.set_page_config(page_title="MT vs PE Change % Calculator", layout="wide")
 st.title("📊 MT vs PE Change % Calculator")
 
+# -----------------------------
+# Initialize session state for history
+# -----------------------------
+if "history" not in st.session_state:
+    st.session_state.history = []
+
+# -----------------------------
+# Helper functions
+# -----------------------------
 def read_xliff_text(file_bytes, tag="target"):
     """Extract all <source> or <target> text from XLIFF (handles zip, plain XML, namespaces)."""
     text = []
@@ -37,11 +50,17 @@ def levenshtein_ratio(s1, s2):
     """Compute similarity ratio"""
     return difflib.SequenceMatcher(None, s1, s2).ratio() * 100
 
+# -----------------------------
+# File upload
+# -----------------------------
 st.markdown("Upload the **MT XLIFF** and **PE XLIFF** files to calculate change %:")
 
 mt_file = st.file_uploader("Upload MT XLIFF", type=["xlf","xliff","mxliff"])
 pe_file = st.file_uploader("Upload PE XLIFF", type=["xlf","xliff","mxliff"])
 
+# -----------------------------
+# Compute Change %
+# -----------------------------
 if st.button("Compute Change %"):
     if not mt_file or not pe_file:
         st.error("Please upload both MT and PE XLIFF files.")
@@ -50,7 +69,7 @@ if st.button("Compute Change %"):
             mt_bytes = mt_file.read()
             pe_bytes = pe_file.read()
 
-            # Extract sources for strict validation
+            # Extract sources for validation
             mt_sources = read_xliff_text(mt_bytes, tag="source")
             pe_sources = read_xliff_text(pe_bytes, tag="source")
 
@@ -69,13 +88,13 @@ if st.button("Compute Change %"):
                 else:
                     change_percent = 100 - levenshtein_ratio(mt_text, pe_text)
 
-                    # Colored badges for Change %
+                    # Colored badges
                     if change_percent < 20:
                         st.error(f"🔴 Change %: {change_percent:.2f}% – Minimal editing")
-                        category = "Minimal post-editing"
+                        category = "Minimal editing"
                     elif change_percent < 50:
                         st.warning(f"🟡 Change %: {change_percent:.2f}% – Moderate editing")
-                        category = "Moderate post-editing"
+                        category = "Moderate editing"
                     else:
                         st.success(f"🟢 Change %: {change_percent:.2f}% – Heavy post-editing")
                         category = "Heavy post-editing"
@@ -86,7 +105,11 @@ if st.button("Compute Change %"):
                     col2.metric("MT Target Words", len(mt_text.split()))
                     col3.metric("PE Target Words", len(pe_text.split()))
 
-                    # Prepare Excel report with file names
+                    # Timestamp for report
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    safe_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                    # Prepare report data
                     report_data = {
                         "Metric": [
                             "MT File Name",
@@ -95,7 +118,8 @@ if st.button("Compute Change %"):
                             "MT Target Words",
                             "PE Target Words",
                             "Change %",
-                            "Category"
+                            "Category",
+                            "Analysis Timestamp"
                         ],
                         "Value": [
                             mt_file.name,
@@ -104,21 +128,50 @@ if st.button("Compute Change %"):
                             len(mt_text.split()),
                             len(pe_text.split()),
                             f"{change_percent:.2f}%",
-                            category
+                            category,
+                            timestamp
                         ]
                     }
                     df = pd.DataFrame(report_data)
 
-                    output = BytesIO()
-                    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                        df.to_excel(writer, index=False, sheet_name="QA Report")
+                    # Export Excel (fallback to CSV if openpyxl missing)
+                    try:
+                        output = BytesIO()
+                        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                            df.to_excel(writer, index=False, sheet_name="QA Report")
+                        st.download_button(
+                            label="📥 Download Report (Excel)",
+                            data=output.getvalue(),
+                            file_name=f"QA_Report_{safe_timestamp}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        )
+                    except ImportError:
+                        csv_output = df.to_csv(index=False).encode("utf-8")
+                        st.download_button(
+                            label="📥 Download Report (CSV)",
+                            data=csv_output,
+                            file_name=f"QA_Report_{safe_timestamp}.csv",
+                            mime="text/csv"
+                        )
 
-                    st.download_button(
-                        label="📥 Download Report (Excel)",
-                        data=output.getvalue(),
-                        file_name="QA_Report.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
+                    # -----------------------------
+                    # Update session history
+                    # -----------------------------
+                    st.session_state.history.append({
+                        "MT File": mt_file.name,
+                        "PE File": pe_file.name,
+                        "Total Segments": len(mt_sources),
+                        "MT Words": len(mt_text.split()),
+                        "PE Words": len(pe_text.split()),
+                        "Change %": f"{change_percent:.2f}%",
+                        "Category": category,
+                        "Timestamp": timestamp
+                    })
 
-        except Exception as ex:
-            st.error(f"⚠️ Error: {ex}")
+# -----------------------------
+# Display upload & analysis history
+# -----------------------------
+if st.session_state.history:
+    st.markdown("### 🕒 Upload & Analysis History")
+    history_df = pd.DataFrame(st.session_state.history[::-1])  # recent first
+    st.dataframe(history_df)
