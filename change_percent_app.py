@@ -3,6 +3,7 @@ import zipfile
 from io import BytesIO
 import xml.etree.ElementTree as ET
 import difflib
+import pandas as pd
 
 st.set_page_config(page_title="MT vs PE Change % Calculator", layout="wide")
 st.title("📊 MT vs PE Change % Calculator")
@@ -49,18 +50,17 @@ if st.button("Compute Change %"):
             mt_bytes = mt_file.read()
             pe_bytes = pe_file.read()
 
-            # Extract source segments for strict validation
+            # Extract sources for strict validation
             mt_sources = read_xliff_text(mt_bytes, tag="source")
             pe_sources = read_xliff_text(pe_bytes, tag="source")
 
             if mt_sources != pe_sources:
                 st.error("❌ MT and PE files have mismatched source segments. Calculation stopped.")
             else:
-                # Extract target texts
+                # Extract targets
                 mt_targets = read_xliff_text(mt_bytes, tag="target")
                 pe_targets = read_xliff_text(pe_bytes, tag="target")
 
-                # Combine all targets for overall change %
                 mt_text = " ".join(mt_targets)
                 pe_text = " ".join(pe_targets)
 
@@ -72,17 +72,53 @@ if st.button("Compute Change %"):
                     # Colored badges for Change %
                     if change_percent < 20:
                         st.error(f"🔴 Change %: {change_percent:.2f}% – Minimal editing")
+                        category = "Minimal post-editing"
                     elif change_percent < 50:
                         st.warning(f"🟡 Change %: {change_percent:.2f}% – Moderate editing")
+                        category = "Moderate post-editing"
                     else:
                         st.success(f"🟢 Change %: {change_percent:.2f}% – Heavy post-editing")
+                        category = "Heavy post-editing"
 
-                    # Summary Metrics
-                    col1, col2, col3, col4 = st.columns(4)
+                    # Summary metrics
+                    col1, col2, col3 = st.columns(3)
                     col1.metric("Total Segments", len(mt_sources))
                     col2.metric("MT Target Words", len(mt_text.split()))
                     col3.metric("PE Target Words", len(pe_text.split()))
-                    col4.metric("Segment Difference", abs(len(mt_targets)-len(pe_targets)))
+
+                    # Prepare Excel report with file names
+                    report_data = {
+                        "Metric": [
+                            "MT File Name",
+                            "PE File Name",
+                            "Total Segments",
+                            "MT Target Words",
+                            "PE Target Words",
+                            "Change %",
+                            "Category"
+                        ],
+                        "Value": [
+                            mt_file.name,
+                            pe_file.name,
+                            len(mt_sources),
+                            len(mt_text.split()),
+                            len(pe_text.split()),
+                            f"{change_percent:.2f}%",
+                            category
+                        ]
+                    }
+                    df = pd.DataFrame(report_data)
+
+                    output = BytesIO()
+                    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                        df.to_excel(writer, index=False, sheet_name="QA Report")
+
+                    st.download_button(
+                        label="📥 Download Report (Excel)",
+                        data=output.getvalue(),
+                        file_name="QA_Report.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
 
         except Exception as ex:
             st.error(f"⚠️ Error: {ex}")
